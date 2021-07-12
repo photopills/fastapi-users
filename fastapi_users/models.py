@@ -72,6 +72,7 @@ class BaseOAuthAccount(BaseModel):
     refresh_token: Optional[str] = None
     account_id: str
     account_email: str
+    state_data: dict
 
     @validator("id", pre=True, always=True)
     def default_id(cls, v):
