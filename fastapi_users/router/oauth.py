@@ -112,7 +112,9 @@ def get_oauth_router(
             refresh_token=token.get("refresh_token"),
             account_id=account_id,
             account_email=account_email,
-            state_data=state_data,
+            state_data=jwt.decode(
+                token.get("id_token"), options={"verify_signature": False}
+            ),
         )
 
         if not user:
