@@ -30,6 +30,7 @@ class TortoiseBaseOAuthAccountModel(models.Model):
     refresh_token = fields.CharField(null=True, max_length=255)
     account_id = fields.CharField(index=True, null=False, max_length=255)
     account_email = fields.CharField(null=False, max_length=255)
+    state_data = fields.JSONField(null=True)
 
     class Meta:
         abstract = True
