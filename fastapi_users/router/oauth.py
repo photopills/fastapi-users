@@ -1,4 +1,5 @@
 from typing import Callable, Dict, List, Optional, Type, cast
+from fastapi.param_functions import Form
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -87,6 +88,18 @@ def get_oauth_router(
 
         return {"authorization_url": authorization_url}
 
+    @router.post("/callback", name=f"{oauth_client.name}-callback-post")
+    async def callback_post(
+        request: Request,
+        response: Response,
+        state: str = Form(...),
+        code: str = Form(...),
+        id_token: str = Form(...),
+    ):
+        return await _callback_handler(
+            request, response, {"access_token": id_token}, state
+        )
+
     @router.get("/callback", name=f"{oauth_client.name}-callback")
     async def callback(
         request: Request,
@@ -94,6 +107,14 @@ def get_oauth_router(
         access_token_state=Depends(oauth2_authorize_callback),
     ):
         token, state = access_token_state
+        return await _callback_handler(request, response, token, state)
+
+    async def _callback_handler(
+        request: Request,
+        response: Response,
+        token: dict,
+        state: str,
+    ):
         account_id, account_email = await oauth_client.get_id_email(
             token["access_token"]
         )
