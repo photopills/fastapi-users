@@ -88,26 +88,27 @@ def get_oauth_router(
 
         return {"authorization_url": authorization_url}
 
-    @router.post("/callback", name=f"{oauth_client.name}-callback-post")
-    async def callback_post(
-        request: Request,
-        response: Response,
-        state: str = Form(...),
-        code: str = Form(...),
-        id_token: str = Form(...),
-    ):
-        return await _callback_handler(
-            request, response, {"access_token": id_token}, state
-        )
-
-    @router.get("/callback", name=f"{oauth_client.name}-callback")
-    async def callback(
-        request: Request,
-        response: Response,
-        access_token_state=Depends(oauth2_authorize_callback),
-    ):
-        token, state = access_token_state
-        return await _callback_handler(request, response, token, state)
+    if oauth_client.name == "apple":
+        @router.post("/callback", name=f"{oauth_client.name}-callback")
+        async def callback_post(
+            request: Request,
+            response: Response,
+            state: str = Form(...),
+            code: str = Form(...),
+            id_token: str = Form(...),
+        ):
+            return await _callback_handler(
+                request, response, {"access_token": id_token}, state
+            )
+    if oauth_client.name != "apple":
+        @router.get("/callback", name=f"{oauth_client.name}-callback")
+        async def callback(
+            request: Request,
+            response: Response,
+            access_token_state=Depends(oauth2_authorize_callback),
+        ):
+            token, state = access_token_state
+            return await _callback_handler(request, response, token, state)
 
     async def _callback_handler(
         request: Request,
