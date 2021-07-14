@@ -1,8 +1,17 @@
 from typing import Callable, Dict, List, Optional, Type, cast
-from fastapi.param_functions import Form
+from fastapi.responses import JSONResponse
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+    Form,
+)
 from httpx_oauth.integrations.fastapi import OAuth2AuthorizeCallback
 from httpx_oauth.oauth2 import BaseOAuth2
 
@@ -12,8 +21,13 @@ from fastapi_users.db import BaseUserDatabase
 from fastapi_users.password import generate_password, get_password_hash
 from fastapi_users.router.common import ErrorCode, run_handler
 from fastapi_users.utils import JWT_ALGORITHM, generate_jwt
+from pydantic import BaseModel
 
 STATE_TOKEN_AUDIENCE = "fastapi-users:oauth-state"
+
+
+class Code(BaseModel):
+    code: str
 
 
 def generate_state_token(
@@ -59,7 +73,7 @@ def get_oauth_router(
     @router.get("/authorize")
     async def authorize(
         request: Request,
-        authentication_backend: str,
+        authentication_backend: str = "jwt",
         scopes: List[str] = Query(None),
     ):
         # Check that authentication_backend exists
@@ -88,19 +102,28 @@ def get_oauth_router(
 
         return {"authorization_url": authorization_url}
 
-    if oauth_client.name == "apple":
+    # Apple's dispatchs a POST request to the callback by default
+    if oauth_client.name.startswith("apple"):
+
         @router.post("/callback", name=f"{oauth_client.name}-callback")
         async def callback_post(
             request: Request,
             response: Response,
             state: str = Form(...),
             code: str = Form(...),
-            id_token: str = Form(...),
         ):
+
+            redirect_url = request.url_for(f"{oauth_client.name}-callback")
+            token = await oauth_client.get_access_token(code, redirect_url)
             return await _callback_handler(
-                request, response, {"access_token": id_token}, state
+                request,
+                response,
+                token,
+                state,
             )
-    if oauth_client.name != "apple":
+
+    else:
+
         @router.get("/callback", name=f"{oauth_client.name}-callback")
         async def callback(
             request: Request,
@@ -110,15 +133,40 @@ def get_oauth_router(
             token, state = access_token_state
             return await _callback_handler(request, response, token, state)
 
+    @router.post("/authorize-code", name=f"{oauth_client.name}-code")
+    async def oauth_by_code(
+        request: Request,
+        response: Response,
+        code: str = Form(...),
+        authentication_backend: str = "jwt",
+    ):
+
+        # https://developers.google.com/identity/protocols/oauth2/openid-connect#exchangecode  # noqa
+        state_data = {
+            "authentication_backend": authentication_backend,
+        }
+        state = generate_state_token(state_data, state_secret)
+        redirect_uri = request.url_for(f"{oauth_client.name}-callback")
+
+        oauth_client_payload = await oauth_client.get_access_token(
+            redirect_uri=redirect_uri,
+            code=code,
+        )
+
+
+        token = await _callback_handler(request, response, oauth_client_payload, state)
+
+        # TODO: Return full request cycle status before send the result
+        # TODO: Check token format
+        return JSONResponse(content=token, status_code=201)
+
     async def _callback_handler(
         request: Request,
         response: Response,
         token: dict,
         state: str,
     ):
-        account_id, account_email = await oauth_client.get_id_email(
-            token["access_token"]
-        )
+        account_id, account_email = await oauth_client.get_id_email(token)
 
         try:
             state_data = decode_state_token(state, state_secret)
