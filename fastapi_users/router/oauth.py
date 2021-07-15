@@ -154,11 +154,7 @@ def get_oauth_router(
         )
 
 
-        token = await _callback_handler(request, response, oauth_client_payload, state)
-
-        # TODO: Return full request cycle status before send the result
-        # TODO: Check token format
-        return JSONResponse(content=token, status_code=201)
+        return await _callback_handler(request, response, oauth_client_payload, state)
 
     async def _callback_handler(
         request: Request,
