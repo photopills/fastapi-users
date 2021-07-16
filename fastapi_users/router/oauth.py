@@ -105,15 +105,17 @@ def get_oauth_router(
     # Apple's dispatchs a POST request to the callback by default
     if oauth_client.name.startswith("apple"):
 
-        @router.post("/callback", name=f"{oauth_client.name}-callback")
+        @router.post("/callback", name=callback_route_name)
         async def callback_post(
             request: Request,
             response: Response,
             state: str = Form(...),
             code: str = Form(...),
         ):
+            # TODO: get redirect_url from request if not provided
+            # if redirect_url is None:
+            #     redirect_url = request.url_for(callback_route_name)
 
-            redirect_url = request.url_for(f"{oauth_client.name}-callback")
             token = await oauth_client.get_access_token(code, redirect_url)
             return await _callback_handler(
                 request,
@@ -124,7 +126,7 @@ def get_oauth_router(
 
     else:
 
-        @router.get("/callback", name=f"{oauth_client.name}-callback")
+        @router.get("/callback", name=callback_route_name)
         async def callback(
             request: Request,
             response: Response,
@@ -140,19 +142,20 @@ def get_oauth_router(
         code: str = Form(...),
         authentication_backend: str = "jwt",
     ):
-
         # https://developers.google.com/identity/protocols/oauth2/openid-connect#exchangecode  # noqa
         state_data = {
             "authentication_backend": authentication_backend,
         }
         state = generate_state_token(state_data, state_secret)
-        redirect_uri = request.url_for(f"{oauth_client.name}-callback")
+
+        # TODO: get redirect_url from request if not provided
+        # if redirect_url is None:
+        #     redirect_url = request.url_for(callback_route_name)
 
         oauth_client_payload = await oauth_client.get_access_token(
-            redirect_uri=redirect_uri,
+            redirect_uri=redirect_url,
             code=code,
         )
-
 
         return await _callback_handler(request, response, oauth_client_payload, state)
 
