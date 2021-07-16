@@ -181,6 +181,7 @@ def get_oauth_router(
             refresh_token=token.get("refresh_token"),
             account_id=account_id,
             account_email=account_email,
+            # TODO fix field and verify signature
             state_data=jwt.decode(
                 token.get("id_token"), options={"verify_signature": False}
             ),
@@ -202,7 +203,7 @@ def get_oauth_router(
                 )
                 await user_db.create(user)
                 if after_register:
-                    await run_handler(after_register, user, request)
+                    await run_handler(after_register, user, new_oauth_account, request)
         else:
             # Update oauth
             updated_oauth_accounts = []
