@@ -109,9 +109,11 @@ def get_oauth_router(
         async def callback_post(
             request: Request,
             response: Response,
-            state: str = Form(...),
+            state: Optional[str] = Form(None),
             code: str = Form(...),
         ):
+            # NOTE: state must be passed by the /authorize but is optional to the mobile client
+
             # TODO: get redirect_url from request if not provided
             # if redirect_url is None:
             #     redirect_url = request.url_for(callback_route_name)
@@ -130,7 +132,7 @@ def get_oauth_router(
         async def callback(
             request: Request,
             response: Response,
-            access_token_state=Depends(oauth2_authorize_callback),
+            access_token_state = Depends(oauth2_authorize_callback),
         ):
             token, state = access_token_state
             return await _callback_handler(request, response, token, state)
