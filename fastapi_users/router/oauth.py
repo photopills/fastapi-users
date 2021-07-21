@@ -104,21 +104,24 @@ def get_oauth_router(
 
     # Apple's dispatchs a POST request to the callback by default
     if oauth_client.name.startswith("apple"):
-
         @router.post("/callback", name=callback_route_name)
         async def callback_post(
             request: Request,
             response: Response,
             state: Optional[str] = Form(None),
             code: str = Form(...),
+            authentication_backend: str = "jwt",
         ):
             # NOTE: state must be passed by the /authorize but is optional to the mobile client
 
             # TODO: get redirect_url from request if not provided
-            # if redirect_url is None:
-            #     redirect_url = request.url_for(callback_route_name)
-
             token = await oauth_client.get_access_token(code, redirect_url)
+            if token and (state is None):
+                state_data = {
+                    "authentication_backend": authentication_backend,
+                }
+                state = generate_state_token(state_data, state_secret)
+
             return await _callback_handler(
                 request,
                 response,
@@ -132,34 +135,16 @@ def get_oauth_router(
         async def callback(
             request: Request,
             response: Response,
-            access_token_state = Depends(oauth2_authorize_callback),
+            access_token_state=Depends(oauth2_authorize_callback),
+            authentication_backend: str = "jwt",
         ):
             token, state = access_token_state
+            if token and (state is None):
+                state_data = {
+                    "authentication_backend": authentication_backend,
+                }
+                state = generate_state_token(state_data, state_secret)
             return await _callback_handler(request, response, token, state)
-
-    @router.post("/authorize-code", name=f"{oauth_client.name}-code")
-    async def oauth_by_code(
-        request: Request,
-        response: Response,
-        code: str = Form(...),
-        authentication_backend: str = "jwt",
-    ):
-        # https://developers.google.com/identity/protocols/oauth2/openid-connect#exchangecode  # noqa
-        state_data = {
-            "authentication_backend": authentication_backend,
-        }
-        state = generate_state_token(state_data, state_secret)
-
-        # TODO: get redirect_url from request if not provided
-        # if redirect_url is None:
-        #     redirect_url = request.url_for(callback_route_name)
-
-        oauth_client_payload = await oauth_client.get_access_token(
-            redirect_uri=redirect_url,
-            code=code,
-        )
-
-        return await _callback_handler(request, response, oauth_client_payload, state)
 
     async def _callback_handler(
         request: Request,
@@ -168,7 +153,6 @@ def get_oauth_router(
         state: str,
     ):
         account_id, account_email = await oauth_client.get_id_email(token)
-
         try:
             state_data = decode_state_token(state, state_secret)
         except jwt.DecodeError:
