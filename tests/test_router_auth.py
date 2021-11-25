@@ -10,22 +10,22 @@ from tests.conftest import MockAuthentication, UserDB
 
 
 @pytest.fixture
-def app_factory(mock_user_db, mock_authentication):
+def app_factory(get_user_manager, mock_authentication):
     def _app_factory(requires_verification: bool) -> FastAPI:
         mock_authentication_bis = MockAuthentication(name="mock-bis")
         authenticator = Authenticator(
-            [mock_authentication, mock_authentication_bis], mock_user_db
+            [mock_authentication, mock_authentication_bis], get_user_manager
         )
 
         mock_auth_router = get_auth_router(
             mock_authentication,
-            mock_user_db,
+            get_user_manager,
             authenticator,
             requires_verification=requires_verification,
         )
         mock_bis_auth_router = get_auth_router(
             mock_authentication_bis,
-            mock_user_db,
+            get_user_manager,
             authenticator,
             requires_verification=requires_verification,
         )
@@ -157,6 +157,10 @@ class TestLogin:
         data = cast(Dict[str, Any], response.json())
         assert data["detail"] == ErrorCode.LOGIN_BAD_CREDENTIALS
 
+    async def test_login_namespace(self, path, app_factory):
+        split_url = app_factory(True).url_path_for("auth:login").split("/")
+        assert split_url[len(split_url) - 1] in path
+
 
 @pytest.mark.router
 @pytest.mark.parametrize("path", ["/mock/logout", "/mock-bis/logout"])
@@ -183,7 +187,7 @@ class TestLogout:
             path, headers={"Authorization": f"Bearer {user.id}"}
         )
         if requires_verification:
-            assert response.status_code == status.HTTP_401_UNAUTHORIZED
+            assert response.status_code == status.HTTP_403_FORBIDDEN
         else:
             assert response.status_code == status.HTTP_200_OK
 
@@ -199,3 +203,7 @@ class TestLogout:
             path, headers={"Authorization": f"Bearer {verified_user.id}"}
         )
         assert response.status_code == status.HTTP_200_OK
+
+    async def test_logout_namespace(self, path, app_factory):
+        split_url = app_factory(True).url_path_for("auth:logout").split("/")
+        assert split_url[len(split_url) - 1] in path

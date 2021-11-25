@@ -8,28 +8,29 @@ Here is a full working example with JWT authentication to help get you started.
 
 ## SQLAlchemy
 
-```py
-{!./src/full_sqlalchemy.py!}
-```
+[Open ↗️](https://replit.com/@frankie567/fastapi-users-sqlalchemy)
+
+<iframe frameborder="0" width="100%" height="500px" src="https://replit.com/@frankie567/fastapi-users-sqlalchemy?embed=true"></iframe>
+
 
 ## MongoDB
 
-```py
-{!./src/full_mongodb.py!}
-```
+[Open ↗️](https://replit.com/@frankie567/fastapi-users-mongodb)
+
+<iframe frameborder="0" width="100%" height="500px" src="https://replit.com/@frankie567/fastapi-users-mongodb?embed=true"></iframe>
 
 ## Tortoise ORM
 
-```py
-{!./src/full_tortoise.py!}
-```
+[Open ↗️](https://replit.com/@frankie567/fastapi-users-tortoise)
+
+<iframe frameborder="0" width="100%" height="500px" src="https://replit.com/@frankie567/fastapi-users-tortoise?embed=true"></iframe>
 
 ## Ormar
 
-```py
-{!./src/full_ormar.py!}
-```
+[Open ↗️](https://replit.com/@frankie567/fastapi-users-ormar)
+
+<iframe frameborder="0" width="100%" height="500px" src="https://replit.com/@frankie567/fastapi-users-ormar?embed=true"></iframe>
 
 ## What now?
 
-You're ready to go! Be sure to check the [Usage](../usage/routes.md) section to understand how yo work with **FastAPI Users**.
+You're ready to go! Be sure to check the [Usage](../usage/routes.md) section to understand how to work with **FastAPI Users**.

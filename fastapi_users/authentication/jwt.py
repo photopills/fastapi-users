@@ -1,17 +1,24 @@
-from typing import Any, Optional
+from typing import Any, Dict, Generic, List, Optional
 
 import jwt
-from fastapi import Response
+from fastapi import Response, status
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import UUID4
+from pydantic import UUID4, BaseModel
 
+from fastapi_users import models
 from fastapi_users.authentication.base import BaseAuthentication
-from fastapi_users.db.base import BaseUserDatabase
-from fastapi_users.models import BaseUserDB
-from fastapi_users.utils import JWT_ALGORITHM, generate_jwt
+from fastapi_users.jwt import SecretType, decode_jwt, generate_jwt
+from fastapi_users.manager import BaseUserManager, UserNotExists
 
 
-class JWTAuthentication(BaseAuthentication[str]):
+class JWTLoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class JWTAuthentication(
+    Generic[models.UC, models.UD], BaseAuthentication[str, models.UC, models.UD]
+):
     """
     Authentication backend using a JWT in a Bearer header.
 
@@ -19,40 +26,38 @@ class JWTAuthentication(BaseAuthentication[str]):
     :param lifetime_seconds: Lifetime duration of the JWT in seconds.
     :param tokenUrl: Path where to get a token.
     :param name: Name of the backend. It will be used to name the login route.
+    :param token_audience: List of valid audiences for the JWT.
     """
 
     scheme: OAuth2PasswordBearer
-    token_audience: str = "fastapi-users:auth"
-    secret: str
+    token_audience: List[str]
+    secret: SecretType
     lifetime_seconds: int
 
     def __init__(
         self,
-        secret: str,
+        secret: SecretType,
         lifetime_seconds: int,
         tokenUrl: str = "auth/jwt/login",
         name: str = "jwt",
+        token_audience: List[str] = ["fastapi-users:auth"],
     ):
         super().__init__(name, logout=False)
         self.scheme = OAuth2PasswordBearer(tokenUrl, auto_error=False)
         self.secret = secret
+        self.token_audience = token_audience
         self.lifetime_seconds = lifetime_seconds
 
     async def __call__(
         self,
         credentials: Optional[str],
-        user_db: BaseUserDatabase,
-    ) -> Optional[BaseUserDB]:
+        user_manager: BaseUserManager[models.UC, models.UD],
+    ) -> Optional[models.UD]:
         if credentials is None:
             return None
 
         try:
-            data = jwt.decode(
-                credentials,
-                self.secret,
-                audience=self.token_audience,
-                algorithms=[JWT_ALGORITHM],
-            )
+            data = decode_jwt(credentials, self.secret, self.token_audience)
             user_id = data.get("user_id")
             if user_id is None:
                 return None
@@ -61,14 +66,41 @@ class JWTAuthentication(BaseAuthentication[str]):
 
         try:
             user_uiid = UUID4(user_id)
-            return await user_db.get(user_uiid)
+            return await user_manager.get(user_uiid)
         except ValueError:
             return None
+        except UserNotExists:
+            return None
 
-    async def get_login_response(self, user: BaseUserDB, response: Response) -> Any:
+    async def get_login_response(
+        self,
+        user: models.UD,
+        response: Response,
+        user_manager: BaseUserManager[models.UC, models.UD],
+    ) -> Any:
         token = await self._generate_token(user)
-        return {"access_token": token, "token_type": "bearer"}
+        return JWTLoginResponse(access_token=token, token_type="bearer")
 
-    async def _generate_token(self, user: BaseUserDB) -> str:
+    @staticmethod
+    def get_openapi_login_responses_success() -> Dict[str, Any]:
+        return {
+            status.HTTP_200_OK: {
+                "model": JWTLoginResponse,
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1"
+                            "c2VyX2lkIjoiOTIyMWZmYzktNjQwZi00MzcyLTg2Z"
+                            "DMtY2U2NDJjYmE1NjAzIiwiYXVkIjoiZmFzdGFwaS"
+                            "11c2VyczphdXRoIiwiZXhwIjoxNTcxNTA0MTkzfQ."
+                            "M10bjOe45I5Ncu_uXvOmVV8QxnL-nZfcH96U90JaocI",
+                            "token_type": "bearer",
+                        }
+                    }
+                },
+            },
+        }
+
+    async def _generate_token(self, user: models.UD) -> str:
         data = {"user_id": str(user.id), "aud": self.token_audience}
-        return generate_jwt(data, self.secret, self.lifetime_seconds, JWT_ALGORITHM)
+        return generate_jwt(data, self.secret, self.lifetime_seconds)

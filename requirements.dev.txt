@@ -4,17 +4,16 @@ flake8
 pytest
 requests
 isort
-databases
 pytest-asyncio
 flake8-docstrings
 mkdocs
 mkdocs-material
+mkdocs-mermaid2-plugin
 black
 mypy
 codecov
 pytest-cov
 pytest-mock
-asynctest
 flit
 markdown-include
 pygments
@@ -24,4 +23,3 @@ httpx-oauth
 httpx
 asgi_lifespan
 uvicorn
-sqlalchemy-stubs

@@ -1,22 +1,27 @@
 import asyncio
-from typing import AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, Generic, Optional, Type, Union
+from unittest.mock import MagicMock
 
-import asynctest
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from fastapi import Depends, FastAPI, Response
+from fastapi import FastAPI, Response
 from fastapi.security import OAuth2PasswordBearer
 from httpx_oauth.oauth2 import OAuth2
-from pydantic import UUID4
-from starlette.applications import ASGIApp
+from pydantic import UUID4, SecretStr
+from pytest_mock import MockerFixture
 
 from fastapi_users import models
-from fastapi_users.authentication import Authenticator, BaseAuthentication
+from fastapi_users.authentication import BaseAuthentication
 from fastapi_users.db import BaseUserDatabase
-from fastapi_users.models import BaseOAuthAccount, BaseOAuthAccountMixin, BaseUserDB
+from fastapi_users.jwt import SecretType
+from fastapi_users.manager import (
+    BaseUserManager,
+    InvalidPasswordException,
+    UserNotExists,
+)
+from fastapi_users.models import BaseOAuthAccount, BaseOAuthAccountMixin
 from fastapi_users.password import get_password_hash
-from fastapi_users.user import InvalidPasswordException, ValidatePasswordProtocol
 
 guinevere_password_hash = get_password_hash("guinevere")
 angharad_password_hash = get_password_hash("angharad")
@@ -33,8 +38,8 @@ class UserCreate(models.BaseUserCreate):
     first_name: Optional[str]
 
 
-class UserUpdate(User, models.BaseUserUpdate):
-    pass
+class UserUpdate(models.BaseUserUpdate):
+    first_name: Optional[str]
 
 
 class UserDB(User, models.BaseUserDB):
@@ -49,11 +54,78 @@ class UserDBOAuth(UserOAuth, UserDB):
     pass
 
 
+class BaseTestUserManager(
+    Generic[models.UC, models.UD], BaseUserManager[models.UC, models.UD]
+):
+    reset_password_token_secret = "SECRET"
+    verification_token_secret = "SECRET"
+
+    async def validate_password(
+        self, password: str, user: Union[models.UC, models.UD]
+    ) -> None:
+        if len(password) < 3:
+            raise InvalidPasswordException(
+                reason="Password should be at least 3 characters"
+            )
+
+
+class UserManager(BaseTestUserManager[UserCreate, UserDB]):
+    user_db_model = UserDB
+
+
+class UserManagerOAuth(BaseTestUserManager[UserCreate, UserDBOAuth]):
+    user_db_model = UserDBOAuth
+
+
+class UserManagerMock(UserManager):
+    get_by_email: MagicMock
+    request_verify: MagicMock
+    verify: MagicMock
+    forgot_password: MagicMock
+    reset_password: MagicMock
+    on_after_register: MagicMock
+    on_after_request_verify: MagicMock
+    on_after_verify: MagicMock
+    on_after_forgot_password: MagicMock
+    on_after_reset_password: MagicMock
+    on_after_update: MagicMock
+    _update: MagicMock
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Force the pytest-asyncio loop to be the main one."""
     loop = asyncio.get_event_loop()
     yield loop
+
+
+AsyncMethodMocker = Callable[..., MagicMock]
+
+
+@pytest.fixture
+def async_method_mocker(mocker: MockerFixture) -> AsyncMethodMocker:
+    def _async_method_mocker(
+        object: Any,
+        method: str,
+        return_value: Any = None,
+    ) -> MagicMock:
+        mock: MagicMock = mocker.MagicMock()
+
+        future: asyncio.Future = asyncio.Future()
+        future.set_result(return_value)
+        mock.return_value = future
+        mock.side_effect = None
+
+        setattr(object, method, mock)
+
+        return mock
+
+    return _async_method_mocker
+
+
+@pytest.fixture(params=["SECRET", SecretStr("SECRET")])
+def secret(request) -> SecretType:
+    return request.param
 
 
 @pytest.fixture
@@ -317,25 +389,86 @@ def mock_user_db_oauth(
     return MockUserDatabase(UserDBOAuth)
 
 
-class MockAuthentication(BaseAuthentication[str]):
+@pytest.fixture
+def make_user_manager(mocker: MockerFixture):
+    def _make_user_manager(user_manager_class: Type[BaseTestUserManager], mock_user_db):
+        user_manager = user_manager_class(mock_user_db)
+        mocker.spy(user_manager, "get_by_email")
+        mocker.spy(user_manager, "request_verify")
+        mocker.spy(user_manager, "verify")
+        mocker.spy(user_manager, "forgot_password")
+        mocker.spy(user_manager, "reset_password")
+        mocker.spy(user_manager, "on_after_register")
+        mocker.spy(user_manager, "on_after_request_verify")
+        mocker.spy(user_manager, "on_after_verify")
+        mocker.spy(user_manager, "on_after_forgot_password")
+        mocker.spy(user_manager, "on_after_reset_password")
+        mocker.spy(user_manager, "on_after_update")
+        mocker.spy(user_manager, "_update")
+        return user_manager
+
+    return _make_user_manager
+
+
+@pytest.fixture
+def user_manager(make_user_manager, mock_user_db):
+    return make_user_manager(UserManager, mock_user_db)
+
+
+@pytest.fixture
+def user_manager_oauth(make_user_manager, mock_user_db_oauth):
+    return make_user_manager(UserManagerOAuth, mock_user_db_oauth)
+
+
+@pytest.fixture
+def get_user_manager(user_manager):
+    def _get_user_manager():
+        return user_manager
+
+    return _get_user_manager
+
+
+@pytest.fixture
+def get_user_manager_oauth(user_manager_oauth):
+    def _get_user_manager_oauth():
+        return user_manager_oauth
+
+    return _get_user_manager_oauth
+
+
+class MockAuthentication(BaseAuthentication[str, UserCreate, UserDB]):
     def __init__(self, name: str = "mock"):
         super().__init__(name, logout=True)
         self.scheme = OAuth2PasswordBearer("/login", auto_error=False)
 
-    async def __call__(self, credentials: Optional[str], user_db: BaseUserDatabase):
+    async def __call__(self, credentials: Optional[str], user_manager: BaseUserManager):
         if credentials is not None:
             try:
                 token_uuid = UUID4(credentials)
-                return await user_db.get(token_uuid)
+                return await user_manager.get(token_uuid)
             except ValueError:
+                return None
+            except UserNotExists:
                 return None
         return None
 
-    async def get_login_response(self, user: BaseUserDB, response: Response):
+    async def get_login_response(
+        self, user: UserDB, response: Response, user_manager: BaseUserManager
+    ):
         return {"token": user.id}
 
-    async def get_logout_response(self, user: BaseUserDB, response: Response):
+    async def get_logout_response(
+        self, user: UserDB, response: Response, user_manager: BaseUserManager
+    ):
         return None
+
+    @staticmethod
+    def get_openapi_login_responses_success() -> Dict[str, Any]:
+        return {}
+
+    @staticmethod
+    def get_openapi_logout_responses_success() -> Dict[str, Any]:
+        return {}
 
 
 @pytest.fixture
@@ -345,7 +478,7 @@ def mock_authentication():
 
 @pytest.fixture
 def get_test_client():
-    async def _get_test_client(app: ASGIApp) -> AsyncGenerator[httpx.AsyncClient, None]:
+    async def _get_test_client(app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
         async with LifespanManager(app):
             async with httpx.AsyncClient(
                 app=app, base_url="http://app.io"
@@ -353,39 +486,6 @@ def get_test_client():
                 yield test_client
 
     return _get_test_client
-
-
-@pytest.fixture
-@pytest.mark.asyncio
-def get_test_auth_client(mock_user_db, get_test_client):
-    async def _get_test_auth_client(
-        backends: List[BaseAuthentication],
-    ) -> AsyncGenerator[httpx.AsyncClient, None]:
-        app = FastAPI()
-        authenticator = Authenticator(backends, mock_user_db)
-
-        @app.get("/test-current-user")
-        def test_current_user(user: UserDB = Depends(authenticator.current_user())):
-            return user
-
-        @app.get("/test-current-active-user")
-        def test_current_active_user(
-            user: UserDB = Depends(authenticator.current_user(active=True)),
-        ):
-            return user
-
-        @app.get("/test-current-superuser")
-        def test_current_superuser(
-            user: UserDB = Depends(
-                authenticator.current_user(active=True, superuser=True)
-            ),
-        ):
-            return user
-
-        async for client in get_test_client(app):
-            yield client
-
-    return _get_test_auth_client
 
 
 @pytest.fixture
@@ -402,14 +502,3 @@ def oauth_client() -> OAuth2:
         ACCESS_TOKEN_ENDPOINT,
         name="service1",
     )
-
-
-@pytest.fixture
-def validate_password() -> ValidatePasswordProtocol:
-    async def _validate_password(password: str, user: models.UD) -> None:
-        if len(password) < 3:
-            raise InvalidPasswordException(
-                reason="Password should be at least 3 characters"
-            )
-
-    return asynctest.CoroutineMock(wraps=_validate_password)

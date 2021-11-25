@@ -285,11 +285,158 @@
       "contributions": [
         "bug"
       ]
+    },
+    {
+      "login": "cosmosquark",
+      "name": "Ben",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1540682?v=4",
+      "profile": "https://github.com/cosmosquark",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "BoYanZh",
+      "name": "BoYanZh",
+      "avatar_url": "https://avatars.githubusercontent.com/u/32470225?v=4",
+      "profile": "https://github.com/BoYanZh",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "davidbrochart",
+      "name": "David Brochart",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4711805?v=4",
+      "profile": "https://github.com/davidbrochart",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "daanbeverdam",
+      "name": "Daan Beverdam",
+      "avatar_url": "https://avatars.githubusercontent.com/u/13944585?v=4",
+      "profile": "https://www.daanbeverdam.com",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "stephane",
+      "name": "Stéphane Raimbault",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1815?v=4",
+      "profile": "http://sralab.com",
+      "contributions": [
+        "test",
+        "bug"
+      ]
+    },
+    {
+      "login": "sondrelg",
+      "name": "Sondre Lillebø Gundersen",
+      "avatar_url": "https://avatars.githubusercontent.com/u/25310870?v=4",
+      "profile": "https://github.com/sondrelg",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "maximka1221",
+      "name": "Maxim",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1503245?v=4",
+      "profile": "https://github.com/maximka1221",
+      "contributions": [
+        "doc",
+        "bug"
+      ]
+    },
+    {
+      "login": "scottdavort",
+      "name": "scottdavort",
+      "avatar_url": "https://avatars.githubusercontent.com/u/58272461?v=4",
+      "profile": "https://github.com/scottdavort",
+      "contributions": [
+        "financial"
+      ]
+    },
+    {
+      "login": "jdukewich",
+      "name": "John Dukewich",
+      "avatar_url": "https://avatars.githubusercontent.com/u/37190801?v=4",
+      "profile": "https://github.com/jdukewich",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "yezz123",
+      "name": "Yasser Tahiri",
+      "avatar_url": "https://avatars.githubusercontent.com/u/52716203?v=4",
+      "profile": "http://yezz.me",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "BrandonGoding",
+      "name": "Brandon H. Goding",
+      "avatar_url": "https://avatars.githubusercontent.com/u/17888319?v=4",
+      "profile": "https://www.brandongoding.tech",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "PovilasKud",
+      "name": "PovilasK",
+      "avatar_url": "https://avatars.githubusercontent.com/u/7852173?v=4",
+      "profile": "https://github.com/PovilasKud",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "justb4",
+      "name": "Just van den Broecke",
+      "avatar_url": "https://avatars.githubusercontent.com/u/582630?v=4",
+      "profile": "http://justobjects.nl",
+      "contributions": [
+        "financial"
+      ]
+    },
+    {
+      "login": "jakemanger",
+      "name": "jakemanger",
+      "avatar_url": "https://avatars.githubusercontent.com/u/52495554?v=4",
+      "profile": "https://github.com/jakemanger",
+      "contributions": [
+        "bug",
+        "code"
+      ]
+    },
+    {
+      "login": "eltociear",
+      "name": "Ikko Ashimine",
+      "avatar_url": "https://avatars.githubusercontent.com/u/22633385?v=4",
+      "profile": "https://bandism.net/",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "matyasrichter",
+      "name": "Matyáš Richter",
+      "avatar_url": "https://avatars.githubusercontent.com/u/20258539?v=4",
+      "profile": "https://github.com/matyasrichter",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,
   "projectName": "fastapi-users",
-  "projectOwner": "frankie567",
+  "projectOwner": "fastapi-users",
   "repoType": "github",
   "repoHost": "https://github.com",
   "skipCi": true

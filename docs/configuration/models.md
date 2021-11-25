@@ -1,4 +1,4 @@
-# User model
+# Models
 
 **FastAPI Users** defines a minimal User model for authentication purposes. It is structured like this:
 
@@ -31,7 +31,7 @@ class UserCreate(models.BaseUserCreate):
     pass
 
 
-class UserUpdate(User, models.BaseUserUpdate):
+class UserUpdate(models.BaseUserUpdate):
     pass
 
 
@@ -39,16 +39,31 @@ class UserDB(User, models.BaseUserDB):
     pass
 ```
 
-You can of course add your own properties there to fit to your needs!
+### Adding your own fields
 
-## Next steps
+You can of course add your own properties there to fit to your needs. In the example below, we add a required string property, `first_name`, and an optional date property, `birthdate`.
 
-Depending on your database backend, the database configuration will differ a bit.
+```py
+import datetime
 
-[I'm using SQLAlchemy](databases/sqlalchemy.md)
+from fastapi_users import models
 
-[I'm using MongoDB](databases/mongodb.md)
 
-[I'm using Tortoise ORM](databases/tortoise.md)
+class User(models.BaseUser):
+    first_name: str
+    birthdate: Optional[datetime.date]
 
-[I'm using ormar](databases/ormar.md)
+
+class UserCreate(models.BaseUserCreate):
+    first_name: str
+    birthdate: Optional[datetime.date]
+
+
+class UserUpdate(models.BaseUserUpdate):
+    first_name: Optional[str]
+    birthdate: Optional[datetime.date]
+
+
+class UserDB(User, models.BaseUserDB):
+    pass
+```

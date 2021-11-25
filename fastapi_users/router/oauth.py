@@ -1,4 +1,5 @@
-from typing import Callable, Dict, List, Optional, Type, cast
+import enum
+from typing import Dict, List
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -7,42 +8,30 @@ from httpx_oauth.oauth2 import BaseOAuth2
 
 from fastapi_users import models
 from fastapi_users.authentication import Authenticator
-from fastapi_users.db import BaseUserDatabase
-from fastapi_users.password import generate_password, get_password_hash
-from fastapi_users.router.common import ErrorCode, run_handler
-from fastapi_users.utils import JWT_ALGORITHM, generate_jwt
+from fastapi_users.jwt import SecretType, decode_jwt, generate_jwt
+from fastapi_users.manager import BaseUserManager, UserManagerDependency
+from fastapi_users.router.common import ErrorCode, ErrorModel
 
 STATE_TOKEN_AUDIENCE = "fastapi-users:oauth-state"
 
 
 def generate_state_token(
-    data: Dict[str, str], secret: str, lifetime_seconds: int = 3600
+    data: Dict[str, str], secret: SecretType, lifetime_seconds: int = 3600
 ) -> str:
     data["aud"] = STATE_TOKEN_AUDIENCE
-    return generate_jwt(data, secret, lifetime_seconds, JWT_ALGORITHM)
-
-
-def decode_state_token(token: str, secret: str) -> Dict[str, str]:
-    return jwt.decode(
-        token,
-        secret,
-        audience=STATE_TOKEN_AUDIENCE,
-        algorithms=[JWT_ALGORITHM],
-    )
+    return generate_jwt(data, secret, lifetime_seconds)
 
 
 def get_oauth_router(
     oauth_client: BaseOAuth2,
-    user_db: BaseUserDatabase[models.BaseUserDB],
-    user_db_model: Type[models.BaseUserDB],
+    get_user_manager: UserManagerDependency[models.UC, models.UD],
     authenticator: Authenticator,
-    state_secret: str,
+    state_secret: SecretType,
     redirect_url: str = None,
-    after_register: Optional[Callable[[models.UD, Request], None]] = None,
 ) -> APIRouter:
     """Generate a router with the OAuth routes."""
     router = APIRouter()
-    callback_route_name = f"{oauth_client.name}-callback"
+    callback_route_name = f"oauth:{oauth_client.name}-callback"
 
     if redirect_url is not None:
         oauth2_authorize_callback = OAuth2AuthorizeCallback(
@@ -55,28 +44,28 @@ def get_oauth_router(
             route_name=callback_route_name,
         )
 
-    @router.get("/authorize")
+    AuthenticationBackendName: enum.EnumMeta = enum.Enum(
+        "AuthenticationBackendName",
+        {backend.name: backend.name for backend in authenticator.backends},
+    )
+
+    @router.get(
+        "/authorize",
+        name="oauth:authorize",
+        response_model=models.OAuth2AuthorizeResponse,
+    )
     async def authorize(
         request: Request,
-        authentication_backend: str,
+        authentication_backend: AuthenticationBackendName,
         scopes: List[str] = Query(None),
     ):
-        # Check that authentication_backend exists
-        backend_exists = False
-        for backend in authenticator.backends:
-            if backend.name == authentication_backend:
-                backend_exists = True
-                break
-        if not backend_exists:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-
         if redirect_url is not None:
             authorize_redirect_url = redirect_url
         else:
             authorize_redirect_url = request.url_for(callback_route_name)
 
         state_data = {
-            "authentication_backend": authentication_backend,
+            "authentication_backend": str(authentication_backend),
         }
         state = generate_state_token(state_data, state_secret)
         authorization_url = await oauth_client.get_authorization_url(
@@ -87,11 +76,36 @@ def get_oauth_router(
 
         return {"authorization_url": authorization_url}
 
-    @router.get("/callback", name=f"{oauth_client.name}-callback")
+    @router.get(
+        "/callback",
+        name=f"oauth:{oauth_client.name}-callback",
+        description="The response varies based on the"
+        "`authentication_backend` used on the `/authorize` endpoint.",
+        responses={
+            status.HTTP_400_BAD_REQUEST: {
+                "model": ErrorModel,
+                "content": {
+                    "application/json": {
+                        "examples": {
+                            "jwt_decode": {
+                                "summary": "Invalid token.",
+                                "value": None,
+                            },
+                            ErrorCode.LOGIN_BAD_CREDENTIALS: {
+                                "summary": "Password validation failed.",
+                                "value": {"detail": ErrorCode.LOGIN_BAD_CREDENTIALS},
+                            },
+                        }
+                    }
+                },
+            },
+        },
+    )
     async def callback(
         request: Request,
         response: Response,
         access_token_state=Depends(oauth2_authorize_callback),
+        user_manager: BaseUserManager[models.UC, models.UD] = Depends(get_user_manager),
     ):
         token, state = access_token_state
         account_id, account_email = await oauth_client.get_id_email(
@@ -99,11 +113,9 @@ def get_oauth_router(
         )
 
         try:
-            state_data = decode_state_token(state, state_secret)
+            state_data = decode_jwt(state, state_secret, [STATE_TOKEN_AUDIENCE])
         except jwt.DecodeError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-
-        user = await user_db.get_by_oauth_account(oauth_client.name, account_id)
 
         new_oauth_account = models.BaseOAuthAccount(
             oauth_name=oauth_client.name,
@@ -117,33 +129,7 @@ def get_oauth_router(
             ),
         )
 
-        if not user:
-            user = await user_db.get_by_email(account_email)
-            if user:
-                # Link account
-                user.oauth_accounts.append(new_oauth_account)  # type: ignore
-                await user_db.update(user)
-            else:
-                # Create account
-                password = generate_password()
-                user = user_db_model(
-                    email=account_email,
-                    hashed_password=get_password_hash(password),
-                    oauth_accounts=[new_oauth_account],
-                )
-                await user_db.create(user)
-                if after_register:
-                    await run_handler(after_register, user, request)
-        else:
-            # Update oauth
-            updated_oauth_accounts = []
-            for oauth_account in user.oauth_accounts:  # type: ignore
-                if oauth_account.account_id == account_id:
-                    updated_oauth_accounts.append(new_oauth_account)
-                else:
-                    updated_oauth_accounts.append(oauth_account)
-            user.oauth_accounts = updated_oauth_accounts  # type: ignore
-            await user_db.update(user)
+        user = await user_manager.oauth_callback(new_oauth_account, request)
 
         if not user.is_active:
             raise HTTPException(
@@ -154,8 +140,6 @@ def get_oauth_router(
         # Authenticate
         for backend in authenticator.backends:
             if backend.name == state_data["authentication_backend"]:
-                return await backend.get_login_response(
-                    cast(models.BaseUserDB, user), response
-                )
+                return await backend.get_login_response(user, response, user_manager)
 
     return router

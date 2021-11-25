@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional, TypeVar
 
-from pydantic import UUID4, BaseModel, EmailStr, validator
+from pydantic import UUID4, BaseModel, EmailStr, Field
 
 
 class CreateUpdateDictModel(BaseModel):
@@ -24,15 +24,11 @@ class CreateUpdateDictModel(BaseModel):
 class BaseUser(CreateUpdateDictModel):
     """Base User model."""
 
-    id: Optional[UUID4] = None
-    email: Optional[EmailStr] = None
-    is_active: Optional[bool] = True
-    is_superuser: Optional[bool] = False
-    is_verified: Optional[bool] = False
-
-    @validator("id", pre=True, always=True)
-    def default_id(cls, v):
-        return v or uuid.uuid4()
+    id: UUID4 = Field(default_factory=uuid.uuid4)
+    email: EmailStr
+    is_active: bool = True
+    is_superuser: bool = False
+    is_verified: bool = False
 
 
 class BaseUserCreate(CreateUpdateDictModel):
@@ -43,29 +39,31 @@ class BaseUserCreate(CreateUpdateDictModel):
     is_verified: Optional[bool] = False
 
 
-class BaseUserUpdate(BaseUser):
+class BaseUserUpdate(CreateUpdateDictModel):
     password: Optional[str]
+    email: Optional[EmailStr]
+    is_active: Optional[bool]
+    is_superuser: Optional[bool]
+    is_verified: Optional[bool]
 
 
 class BaseUserDB(BaseUser):
-    id: UUID4
-    email: EmailStr
-    is_active: bool
-    is_superuser: bool
-    is_verified: bool
     hashed_password: str
 
     class Config:
         orm_mode = True
 
 
+U = TypeVar("U", bound=BaseUser)
+UC = TypeVar("UC", bound=BaseUserCreate)
+UU = TypeVar("UU", bound=BaseUserUpdate)
 UD = TypeVar("UD", bound=BaseUserDB)
 
 
 class BaseOAuthAccount(BaseModel):
     """Base OAuth account model."""
 
-    id: Optional[UUID4] = None
+    id: UUID4 = Field(default_factory=uuid.uuid4)
     oauth_name: str
     access_token: str
     expires_at: Optional[int] = None
@@ -73,10 +71,6 @@ class BaseOAuthAccount(BaseModel):
     account_id: str
     account_email: str
     state_data: dict
-
-    @validator("id", pre=True, always=True)
-    def default_id(cls, v):
-        return v or uuid.uuid4()
 
     class Config:
         orm_mode = True
@@ -86,3 +80,7 @@ class BaseOAuthAccountMixin(BaseModel):
     """Adds OAuth accounts list to a User model."""
 
     oauth_accounts: List[BaseOAuthAccount] = []
+
+
+class OAuth2AuthorizeResponse(BaseModel):
+    authorization_url: str

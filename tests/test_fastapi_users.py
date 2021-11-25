@@ -11,77 +11,90 @@ from tests.conftest import User, UserCreate, UserDB, UserUpdate
 @pytest.fixture
 @pytest.mark.asyncio
 async def test_app_client(
-    mock_user_db, mock_authentication, oauth_client, get_test_client, validate_password
+    secret,
+    get_user_manager,
+    mock_authentication,
+    oauth_client,
+    get_test_client,
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
-    fastapi_users = FastAPIUsers(
-        mock_user_db,
+    fastapi_users = FastAPIUsers[User, UserCreate, UserUpdate, UserDB](
+        get_user_manager,
         [mock_authentication],
         User,
         UserCreate,
         UserUpdate,
         UserDB,
-        validate_password,
     )
 
     app = FastAPI()
     app.include_router(fastapi_users.get_register_router())
-    app.include_router(fastapi_users.get_reset_password_router("SECRET"))
+    app.include_router(fastapi_users.get_reset_password_router())
     app.include_router(fastapi_users.get_auth_router(mock_authentication))
-    app.include_router(fastapi_users.get_oauth_router(oauth_client, "SECRET"))
+    app.include_router(fastapi_users.get_oauth_router(oauth_client, secret))
     app.include_router(fastapi_users.get_users_router(), prefix="/users")
-    app.include_router(fastapi_users.get_verify_router("SECRET"))
+    app.include_router(fastapi_users.get_verify_router())
 
     @app.delete("/users/me")
     def custom_users_route():
         return None
 
     @app.get("/current-user")
-    def current_user(user=Depends(fastapi_users.get_current_user)):
+    def current_user(user=Depends(fastapi_users.current_user())):
         return user
 
     @app.get("/current-active-user")
-    def current_active_user(user=Depends(fastapi_users.get_current_active_user)):
+    def current_active_user(user=Depends(fastapi_users.current_user(active=True))):
         return user
 
     @app.get("/current-verified-user")
-    def current_verified_user(user=Depends(fastapi_users.get_current_verified_user)):
+    def current_verified_user(user=Depends(fastapi_users.current_user(verified=True))):
         return user
 
     @app.get("/current-superuser")
-    def current_superuser(user=Depends(fastapi_users.get_current_superuser)):
+    def current_superuser(
+        user=Depends(fastapi_users.current_user(active=True, superuser=True))
+    ):
         return user
 
     @app.get("/current-verified-superuser")
     def current_verified_superuser(
-        user=Depends(fastapi_users.get_current_verified_superuser),
+        user=Depends(
+            fastapi_users.current_user(active=True, verified=True, superuser=True)
+        ),
     ):
         return user
 
     @app.get("/optional-current-user")
-    def optional_current_user(user=Depends(fastapi_users.get_optional_current_user)):
+    def optional_current_user(user=Depends(fastapi_users.current_user(optional=True))):
         return user
 
     @app.get("/optional-current-active-user")
     def optional_current_active_user(
-        user=Depends(fastapi_users.get_optional_current_active_user),
+        user=Depends(fastapi_users.current_user(optional=True, active=True)),
     ):
         return user
 
     @app.get("/optional-current-verified-user")
     def optional_current_verified_user(
-        user=Depends(fastapi_users.get_optional_current_verified_user),
+        user=Depends(fastapi_users.current_user(optional=True, verified=True)),
     ):
         return user
 
     @app.get("/optional-current-superuser")
     def optional_current_superuser(
-        user=Depends(fastapi_users.get_optional_current_superuser),
+        user=Depends(
+            fastapi_users.current_user(optional=True, active=True, superuser=True)
+        ),
     ):
         return user
 
     @app.get("/optional-current-verified-superuser")
     def optional_current_verified_superuser(
-        user=Depends(fastapi_users.get_optional_current_verified_superuser),
+        user=Depends(
+            fastapi_users.current_user(
+                optional=True, active=True, verified=True, superuser=True
+            )
+        ),
     ):
         return user
 
@@ -191,7 +204,7 @@ class TestGetCurrentVerifiedUser:
             "/current-verified-user",
             headers={"Authorization": f"Bearer {user.id}"},
         )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_valid_token_verified_user(
         self, test_app_client: httpx.AsyncClient, verified_user: UserDB
@@ -253,7 +266,7 @@ class TestGetCurrentVerifiedSuperuser:
             "/current-verified-superuser",
             headers={"Authorization": f"Bearer {user.id}"},
         )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_valid_token_verified_user(
         self, test_app_client: httpx.AsyncClient, verified_user: UserDB
@@ -271,7 +284,7 @@ class TestGetCurrentVerifiedSuperuser:
             "/current-verified-superuser",
             headers={"Authorization": f"Bearer {superuser.id}"},
         )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     async def test_valid_token_verified_superuser(
         self, test_app_client: httpx.AsyncClient, verified_superuser: UserDB

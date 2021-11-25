@@ -9,16 +9,12 @@ from fastapi_users.authentication import CookieAuthentication
 
 SECRET = "SECRET"
 
-auth_backends = []
-
 cookie_authentication = CookieAuthentication(secret=SECRET, lifetime_seconds=3600)
-
-auth_backends.append(cookie_authentication)
 ```
 
 As you can see, instantiation is quite simple. It accepts the following arguments:
 
-* `secret` (`str`): A constant secret which is used to encode the cookie. **Use a strong passphrase and keep it secure.**
+* `secret` (`Union[str, pydantic.SecretStr]`): A constant secret which is used to encode the cookie. **Use a strong passphrase and keep it secure.**
 * `lifetime_seconds` (`int`): The lifetime of the cookie in seconds.
 * `cookie_name` (`fastapiusersauth`): Name of the cookie.
 * `cookie_path` (`/`): Cookie path.
@@ -58,7 +54,3 @@ This method will remove the authentication cookie:
 ## Authentication
 
 This method expects that you provide a valid cookie in the headers.
-
-## Next steps
-
-We will now configure the main **FastAPI Users** object that will expose the [routers](../routers/index.md).

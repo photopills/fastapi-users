@@ -1,17 +1,19 @@
-from typing import Any, Optional
+from typing import Any, Dict, Generic, List, Optional
 
 import jwt
-from fastapi import Response
+from fastapi import Response, status
 from fastapi.security import APIKeyCookie
 from pydantic import UUID4
 
+from fastapi_users import models
 from fastapi_users.authentication import BaseAuthentication
-from fastapi_users.db.base import BaseUserDatabase
-from fastapi_users.models import BaseUserDB
-from fastapi_users.utils import JWT_ALGORITHM, generate_jwt
+from fastapi_users.jwt import SecretType, decode_jwt, generate_jwt
+from fastapi_users.manager import BaseUserManager, UserNotExists
 
 
-class CookieAuthentication(BaseAuthentication[str]):
+class CookieAuthentication(
+    Generic[models.UC, models.UD], BaseAuthentication[str, models.UC, models.UD]
+):
     """
     Authentication backend using a cookie.
 
@@ -24,12 +26,14 @@ class CookieAuthentication(BaseAuthentication[str]):
     :param cookie_domain: Cookie domain.
     :param cookie_secure: Whether to only send the cookie to the server via SSL request.
     :param cookie_httponly: Whether to prevent access to the cookie via JavaScript.
+    :param cookie_samesite: Set the SameSite policy of the cookie.
     :param name: Name of the backend. It will be used to name the login route.
+    :param token_audience: List of valid audiences for the JWT.
     """
 
     scheme: APIKeyCookie
-    token_audience: str = "fastapi-users:auth"
-    secret: str
+    token_audience: List[str]
+    secret: SecretType
     lifetime_seconds: Optional[int]
     cookie_name: str
     cookie_path: str
@@ -40,7 +44,7 @@ class CookieAuthentication(BaseAuthentication[str]):
 
     def __init__(
         self,
-        secret: str,
+        secret: SecretType,
         lifetime_seconds: Optional[int] = None,
         cookie_name: str = "fastapiusersauth",
         cookie_path: str = "/",
@@ -49,6 +53,7 @@ class CookieAuthentication(BaseAuthentication[str]):
         cookie_httponly: bool = True,
         cookie_samesite: str = "lax",
         name: str = "cookie",
+        token_audience: List[str] = ["fastapi-users:auth"],
     ):
         super().__init__(name, logout=True)
         self.secret = secret
@@ -59,23 +64,19 @@ class CookieAuthentication(BaseAuthentication[str]):
         self.cookie_secure = cookie_secure
         self.cookie_httponly = cookie_httponly
         self.cookie_samesite = cookie_samesite
+        self.token_audience = token_audience
         self.scheme = APIKeyCookie(name=self.cookie_name, auto_error=False)
 
     async def __call__(
         self,
         credentials: Optional[str],
-        user_db: BaseUserDatabase,
-    ) -> Optional[BaseUserDB]:
+        user_manager: BaseUserManager[models.UC, models.UD],
+    ) -> Optional[models.UD]:
         if credentials is None:
             return None
 
         try:
-            data = jwt.decode(
-                credentials,
-                self.secret,
-                audience=self.token_audience,
-                algorithms=[JWT_ALGORITHM],
-            )
+            data = decode_jwt(credentials, self.secret, self.token_audience)
             user_id = data.get("user_id")
             if user_id is None:
                 return None
@@ -84,11 +85,18 @@ class CookieAuthentication(BaseAuthentication[str]):
 
         try:
             user_uiid = UUID4(user_id)
-            return await user_db.get(user_uiid)
+            return await user_manager.get(user_uiid)
         except ValueError:
             return None
+        except UserNotExists:
+            return None
 
-    async def get_login_response(self, user: BaseUserDB, response: Response) -> Any:
+    async def get_login_response(
+        self,
+        user: models.UD,
+        response: Response,
+        user_manager: BaseUserManager[models.UC, models.UD],
+    ) -> Any:
         token = await self._generate_token(user)
         response.set_cookie(
             self.cookie_name,
@@ -105,11 +113,22 @@ class CookieAuthentication(BaseAuthentication[str]):
         # so that FastAPI can terminate it properly
         return None
 
-    async def get_logout_response(self, user: BaseUserDB, response: Response) -> Any:
+    def get_openapi_login_responses_success(self) -> Dict[str, Any]:
+        return {status.HTTP_200_OK: {"model": None}}
+
+    async def get_logout_response(
+        self,
+        user: models.UD,
+        response: Response,
+        user_manager: BaseUserManager[models.UC, models.UD],
+    ) -> Any:
         response.delete_cookie(
             self.cookie_name, path=self.cookie_path, domain=self.cookie_domain
         )
 
-    async def _generate_token(self, user: BaseUserDB) -> str:
+    def get_openapi_logout_responses_success(self) -> Dict[str, Any]:
+        return {status.HTTP_200_OK: {"model": None}}
+
+    async def _generate_token(self, user: models.UD) -> str:
         data = {"user_id": str(user.id), "aud": self.token_audience}
-        return generate_jwt(data, self.secret, self.lifetime_seconds, JWT_ALGORITHM)
+        return generate_jwt(data, self.secret, self.lifetime_seconds)
