@@ -153,15 +153,17 @@ def get_oauth_router(
         state: str,
     ):
         account_id, account_email = await oauth_client.get_id_email(token)
+        oauth_client_name = oauth_client.name
+        
         try:
             state_data = decode_state_token(state, state_secret)
         except jwt.DecodeError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
 
-        user = await user_db.get_by_oauth_account(oauth_client.name, account_id)
+        user = await user_db.get_by_oauth_account(oauth_client_name, account_id)
 
         new_oauth_account = models.BaseOAuthAccount(
-            oauth_name=oauth_client.name,
+            oauth_name=oauth_client_name,
             access_token=token["access_token"],
             expires_at=token.get("expires_at"),
             refresh_token=token.get("refresh_token"),
@@ -194,7 +196,7 @@ def get_oauth_router(
             # Update oauth
             updated_oauth_accounts = []
             for oauth_account in user.oauth_accounts:  # type: ignore
-                if oauth_account.account_id == account_id:
+                if oauth_account.account_id == account_id and oauth_account.oauth_name == oauth_client_name:
                     updated_oauth_accounts.append(new_oauth_account)
                 else:
                     updated_oauth_accounts.append(oauth_account)
